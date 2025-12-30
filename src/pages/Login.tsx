@@ -77,8 +77,8 @@ export function Login() {
       <Card
         sx={{
           width: '100%',
-          maxWidth: 400,
-          padding: 4,
+          maxWidth: { xs: '100%', sm: 400 },
+          padding: { xs: 3, sm: 4 },
           backgroundColor: '#ffffff',
           boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
         }}
@@ -89,9 +89,10 @@ export function Login() {
           gutterBottom
           align="center"
           sx={{
-            mb: 3,
+            mb: { xs: 2, sm: 3 },
             color: '#000000',
             fontWeight: 600,
+            fontSize: { xs: '1.75rem', sm: '2.125rem' },
           }}
         >
           Login

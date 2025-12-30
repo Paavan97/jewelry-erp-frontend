@@ -18,12 +18,17 @@ import {
   TextField,
   Alert,
   Chip,
+  IconButton,
+  Switch,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
-import { Add } from '@mui/icons-material';
+import { Add, Edit } from '@mui/icons-material';
 import { DashboardLayout } from '../../components/Layout/DashboardLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
+import type { Organization } from '../../api/admin';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -37,19 +42,29 @@ const createOrgSchema = z.object({
   adminPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const updateOrgSchema = z.object({
+  name: z.string().min(1, 'Organization name is required'),
+  industry: z.string().min(1, 'Industry is required'),
+});
+
 type CreateOrgFormData = z.infer<typeof createOrgSchema>;
+type UpdateOrgFormData = z.infer<typeof updateOrgSchema>;
 
 export function Organizations() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
-  const [openDialog, setOpenDialog] = useState(false);
+  const [openCreateDialog, setOpenCreateDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
+    register: registerCreate,
+    handleSubmit: handleSubmitCreate,
+    formState: { errors: createErrors },
+    reset: resetCreate,
   } = useForm<CreateOrgFormData>({
     resolver: zodResolver(createOrgSchema),
     defaultValues: {
@@ -62,32 +77,77 @@ export function Organizations() {
     },
   });
 
-  const { data: organizations, isLoading } = useQuery({
+  const {
+    register: registerEdit,
+    handleSubmit: handleSubmitEdit,
+    formState: { errors: editErrors },
+    reset: resetEdit,
+  } = useForm<UpdateOrgFormData>({
+    resolver: zodResolver(updateOrgSchema),
+  });
+
+  const { data: organizations, isLoading, error: orgsError } = useQuery({
     queryKey: ['admin', 'organizations'],
     queryFn: adminApi.getAllOrganizations,
     enabled: !!user && user.role === 'SUPER_ADMIN',
+    retry: false,
   });
 
   const createMutation = useMutation({
     mutationFn: adminApi.createOrganization,
     onSuccess: () => {
       setSuccessMessage('Organization created successfully!');
-      setOpenDialog(false);
-      reset();
+      setOpenCreateDialog(false);
+      resetCreate();
       queryClient.invalidateQueries({ queryKey: ['admin', 'organizations'] });
       setTimeout(() => setSuccessMessage(null), 3000);
     },
   });
 
-  const onSubmit = (data: CreateOrgFormData) => {
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateOrgFormData }) =>
+      adminApi.updateOrganization(id, data),
+    onSuccess: () => {
+      setSuccessMessage('Organization updated successfully!');
+      setOpenEditDialog(false);
+      setEditingOrg(null);
+      resetEdit();
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organizations'] });
+      setTimeout(() => setSuccessMessage(null), 3000);
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      adminApi.toggleOrganizationStatus(id, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'organizations'] });
+    },
+  });
+
+  const onSubmitCreate = (data: CreateOrgFormData) => {
     createMutation.mutate(data);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+  const onSubmitEdit = (data: UpdateOrgFormData) => {
+    if (editingOrg) {
+      updateMutation.mutate({ id: editingOrg.id, data });
+    }
+  };
+
+  const handleEdit = (org: Organization) => {
+    setEditingOrg(org);
+    resetEdit({
+      name: org.name,
+      industry: org.industry,
+    });
+    setOpenEditDialog(true);
+  };
+
+  const handleToggleStatus = (org: Organization) => {
+    toggleStatusMutation.mutate({
+      id: org.id,
+      isActive: !org.isActive,
     });
   };
 
@@ -110,13 +170,23 @@ export function Organizations() {
 
   return (
     <DashboardLayout>
-      <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ maxWidth: 1400, mx: 'auto', p: { xs: 1, sm: 2, md: 0 }, width: '100%' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            mb: { xs: 2, sm: 3 },
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 2, sm: 0 },
+          }}
+        >
           <Typography
             variant="h4"
             sx={{
               color: '#000000',
               fontWeight: 600,
+              fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
             }}
           >
             Organizations
@@ -124,10 +194,12 @@ export function Organizations() {
           <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={() => setOpenDialog(true)}
+            onClick={() => setOpenCreateDialog(true)}
+            fullWidth={isMobile}
             sx={{
               backgroundColor: '#5e3b63',
               color: '#ffffff',
+              fontSize: { xs: '0.875rem', sm: '1rem' },
               '&:hover': {
                 backgroundColor: '#5e3b63',
                 opacity: 0.9,
@@ -147,9 +219,31 @@ export function Organizations() {
               backgroundColor: '#ffffff',
               color: '#000000',
               border: '1px solid #5e3b63',
+              '& .MuiAlert-message': {
+                fontSize: { xs: '0.875rem', sm: '0.95rem' },
+              },
             }}
           >
             {successMessage}
+          </Alert>
+        )}
+
+        {orgsError && (
+          <Alert
+            severity="error"
+            sx={{
+              mb: 3,
+              backgroundColor: '#ffffff',
+              color: '#000000',
+              border: '1px solid #5e3b63',
+              '& .MuiAlert-message': {
+                fontSize: { xs: '0.875rem', sm: '0.95rem' },
+              },
+            }}
+          >
+            {orgsError instanceof Error 
+              ? orgsError.message 
+              : 'Failed to load organizations. Please try again.'}
           </Alert>
         )}
 
@@ -164,23 +258,93 @@ export function Organizations() {
               <CircularProgress sx={{ color: '#5e3b63' }} />
             </Box>
           ) : (
-            <TableContainer>
-              <Table>
+            <TableContainer
+              sx={{
+                overflowX: 'auto',
+                '&::-webkit-scrollbar': {
+                  height: 8,
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: '#f1f1f1',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: '#5e3b63',
+                  borderRadius: 4,
+                },
+              }}
+            >
+              <Table sx={{ minWidth: 500 }}>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: '#5e3b63' }}>
-                    <TableCell sx={{ color: '#ffffff', fontWeight: 600 }}>Name</TableCell>
-                    <TableCell sx={{ color: '#ffffff', fontWeight: 600 }}>Industry</TableCell>
-                    <TableCell sx={{ color: '#ffffff', fontWeight: 600 }}>Status</TableCell>
-                    <TableCell sx={{ color: '#ffffff', fontWeight: 600 }}>Created Date</TableCell>
+                    <TableCell
+                      sx={{
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Name
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        whiteSpace: 'nowrap',
+                        display: { xs: 'none', sm: 'table-cell' },
+                      }}
+                    >
+                      Industry
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Status
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Actions
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {organizations && organizations.length > 0 ? (
                     organizations.map((org) => (
                       <TableRow key={org.id} hover>
-                        <TableCell sx={{ color: '#000000' }}>{org.name}</TableCell>
-                        <TableCell sx={{ color: '#000000' }}>{org.industry}</TableCell>
-                        <TableCell>
+                        <TableCell
+                          sx={{
+                            color: '#000000',
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          }}
+                        >
+                          {org.name}
+                        </TableCell>
+                        <TableCell
+                          sx={{
+                            color: '#000000',
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                            display: { xs: 'none', sm: 'table-cell' },
+                          }}
+                        >
+                          {org.industry}
+                        </TableCell>
+                        <TableCell
+                          sx={{
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          }}
+                        >
                           <Chip
                             label={org.isActive ? 'Active' : 'Inactive'}
                             sx={{
@@ -191,7 +355,40 @@ export function Organizations() {
                             }}
                           />
                         </TableCell>
-                        <TableCell sx={{ color: '#000000' }}>{formatDate(org.createdAt)}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <IconButton
+                              onClick={() => handleEdit(org)}
+                              sx={{
+                                color: '#5e3b63',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(94, 59, 99, 0.1)',
+                                },
+                              }}
+                            >
+                              <Edit />
+                            </IconButton>
+                            <Switch
+                              checked={org.isActive}
+                              onChange={() => handleToggleStatus(org)}
+                              disabled={toggleStatusMutation.isPending}
+                              sx={{
+                                '& .MuiSwitch-switchBase.Mui-checked': {
+                                  color: '#5e3b63',
+                                },
+                                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                  backgroundColor: '#5e3b63',
+                                },
+                                '& .MuiSwitch-switchBase': {
+                                  color: '#000000',
+                                },
+                                '& .MuiSwitch-track': {
+                                  backgroundColor: '#000000',
+                                },
+                              }}
+                            />
+                          </Box>
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : (
@@ -209,10 +406,10 @@ export function Organizations() {
 
         {/* Create Organization Dialog */}
         <Dialog
-          open={openDialog}
+          open={openCreateDialog}
           onClose={() => {
-            setOpenDialog(false);
-            reset();
+            setOpenCreateDialog(false);
+            resetCreate();
           }}
           maxWidth="sm"
           fullWidth
@@ -225,14 +422,14 @@ export function Organizations() {
           <DialogTitle sx={{ color: '#000000', fontWeight: 600 }}>
             Create Organization
           </DialogTitle>
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmitCreate(onSubmitCreate)}>
             <DialogContent>
               <TextField
-                {...register('name')}
+                {...registerCreate('name')}
                 label="Organization Name"
                 fullWidth
-                error={!!errors.name}
-                helperText={errors.name?.message}
+                error={!!createErrors.name}
+                helperText={createErrors.name?.message}
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
@@ -261,12 +458,12 @@ export function Organizations() {
                 }}
               />
               <TextField
-                {...register('industry')}
+                {...registerCreate('industry')}
                 label="Industry"
                 fullWidth
                 defaultValue="jewelry"
-                error={!!errors.industry}
-                helperText={errors.industry?.message}
+                error={!!createErrors.industry}
+                helperText={createErrors.industry?.message}
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
@@ -295,15 +492,15 @@ export function Organizations() {
                 }}
               />
               <TextField
-                {...register('businessType')}
+                {...registerCreate('businessType')}
                 label="Business Type"
                 select
                 fullWidth
                 SelectProps={{
                   native: true,
                 }}
-                error={!!errors.businessType}
-                helperText={errors.businessType?.message}
+                error={!!createErrors.businessType}
+                helperText={createErrors.businessType?.message}
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
@@ -336,11 +533,11 @@ export function Organizations() {
                 <option value="MANUFACTURER">Manufacturer</option>
               </TextField>
               <TextField
-                {...register('adminName')}
+                {...registerCreate('adminName')}
                 label="Admin Name"
                 fullWidth
-                error={!!errors.adminName}
-                helperText={errors.adminName?.message}
+                error={!!createErrors.adminName}
+                helperText={createErrors.adminName?.message}
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
@@ -369,12 +566,12 @@ export function Organizations() {
                 }}
               />
               <TextField
-                {...register('adminEmail')}
+                {...registerCreate('adminEmail')}
                 label="Admin Email"
                 type="email"
                 fullWidth
-                error={!!errors.adminEmail}
-                helperText={errors.adminEmail?.message}
+                error={!!createErrors.adminEmail}
+                helperText={createErrors.adminEmail?.message}
                 sx={{
                   mb: 2,
                   '& .MuiOutlinedInput-root': {
@@ -403,12 +600,12 @@ export function Organizations() {
                 }}
               />
               <TextField
-                {...register('adminPassword')}
+                {...registerCreate('adminPassword')}
                 label="Admin Password"
                 type="password"
                 fullWidth
-                error={!!errors.adminPassword}
-                helperText={errors.adminPassword?.message}
+                error={!!createErrors.adminPassword}
+                helperText={createErrors.adminPassword?.message}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': {
@@ -439,8 +636,8 @@ export function Organizations() {
             <DialogActions sx={{ p: 2 }}>
               <Button
                 onClick={() => {
-                  setOpenDialog(false);
-                  reset();
+                  setOpenCreateDialog(false);
+                  resetCreate();
                 }}
                 sx={{ color: '#000000' }}
               >
@@ -467,6 +664,131 @@ export function Organizations() {
                   <CircularProgress size={20} sx={{ color: '#ffffff' }} />
                 ) : (
                   'Create'
+                )}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+
+        {/* Edit Organization Dialog */}
+        <Dialog
+          open={openEditDialog}
+          onClose={() => {
+            setOpenEditDialog(false);
+            setEditingOrg(null);
+            resetEdit();
+          }}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              backgroundColor: '#ffffff',
+            },
+          }}
+        >
+          <DialogTitle sx={{ color: '#000000', fontWeight: 600 }}>
+            Edit Organization
+          </DialogTitle>
+          <form onSubmit={handleSubmitEdit(onSubmitEdit)}>
+            <DialogContent>
+              <TextField
+                {...registerEdit('name')}
+                label="Organization Name"
+                fullWidth
+                error={!!editErrors.name}
+                helperText={editErrors.name?.message}
+                sx={{
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: '#000000',
+                  },
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: '#5e3b63',
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    color: '#000000',
+                  },
+                  '& .MuiFormHelperText-root': {
+                    color: '#000000',
+                  },
+                }}
+              />
+              <TextField
+                {...registerEdit('industry')}
+                label="Industry"
+                fullWidth
+                error={!!editErrors.industry}
+                helperText={editErrors.industry?.message}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: '#5e3b63',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: '#000000',
+                  },
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: '#5e3b63',
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    color: '#000000',
+                  },
+                  '& .MuiFormHelperText-root': {
+                    color: '#000000',
+                  },
+                }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button
+                onClick={() => {
+                  setOpenEditDialog(false);
+                  setEditingOrg(null);
+                  resetEdit();
+                }}
+                sx={{ color: '#000000' }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={updateMutation.isPending}
+                sx={{
+                  backgroundColor: '#5e3b63',
+                  color: '#ffffff',
+                  '&:hover': {
+                    backgroundColor: '#5e3b63',
+                    opacity: 0.9,
+                  },
+                  '&:disabled': {
+                    backgroundColor: '#5e3b63',
+                    opacity: 0.6,
+                  },
+                }}
+              >
+                {updateMutation.isPending ? (
+                  <CircularProgress size={20} sx={{ color: '#ffffff' }} />
+                ) : (
+                  'Save'
                 )}
               </Button>
             </DialogActions>

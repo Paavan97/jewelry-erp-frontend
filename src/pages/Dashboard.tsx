@@ -47,12 +47,12 @@ export function Dashboard() {
 
   return (
     <DashboardLayout>
-      <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: { xs: 1, sm: 2, md: 0 }, width: '100%' }}>
         {/* Welcome Message */}
         <Paper
           sx={{
-            p: 4,
-            mb: 3,
+            p: { xs: 2, sm: 3, md: 4 },
+            mb: { xs: 2, sm: 3 },
             backgroundColor: '#ffffff',
             boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
           }}
@@ -64,6 +64,7 @@ export function Dashboard() {
               color: '#000000',
               fontWeight: 600,
               mb: 1,
+              fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
             }}
           >
             Welcome, {user.name}!
@@ -72,7 +73,7 @@ export function Dashboard() {
             variant="body1"
             sx={{
               color: '#000000',
-              fontSize: '1.1rem',
+              fontSize: { xs: '0.9rem', sm: '1rem', md: '1.1rem' },
             }}
           >
             You are logged in as <strong>{user.role}</strong> at <strong>{user.organization.name}</strong>
@@ -80,11 +81,11 @@ export function Dashboard() {
         </Paper>
 
         {/* Information Cards */}
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, sm: 3 }}>
           <Grid item xs={12} md={6}>
             <Paper
               sx={{
-                p: 3,
+                p: { xs: 2, sm: 3 },
                 backgroundColor: '#ffffff',
                 boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
                 height: '100%',
